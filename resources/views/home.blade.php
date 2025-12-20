@@ -422,44 +422,6 @@
         @endif
     </div>
 
-    <!-- THIS DAY IN MOVIE HISTORY (dibagi 2 kolom) -->
-    <div class="movie-history p-3">
-        <h5 class="fw-bold">📖 This Day in Movie History</h5>
-
-        <div class="row mt-3">
-            <div class="col-md-6">
-                <ul class="list-unstyled">
-                    @foreach($historyLeft as $item)
-                        <li class="mb-2">
-                            <small>
-                                • {{ \Carbon\Carbon::parse($item->original_release_date)->format('Y-m-d') }}
-                                  - {{ $item->name }}
-                                  @if($item->historical_significance)
-                                      ({{ $item->historical_significance }})
-                                  @endif
-                            </small>
-                        </li>
-                    @endforeach
-                </ul>
-            </div>
-            <div class="col-md-6">
-                <ul class="list-unstyled">
-                    @foreach($historyRight as $item)
-                        <li class="mb-2">
-                            <small>
-                                • {{ \Carbon\Carbon::parse($item->original_release_date)->format('Y-m-d') }}
-                                  - {{ $item->name }}
-                                  @if($item->historical_significance)
-                                      ({{ $item->historical_significance }})
-                                  @endif
-                            </small>
-                        </li>
-                    @endforeach
-                </ul>
-            </div>
-        </div>
-    </div>
-</div>
         <!-- TRENDING NOW SLIDER -->
        <div class="trending-section" id="trending">
     <h3 class="fw-bold mb-4">🔥 Trending Now</h3>
@@ -943,13 +905,13 @@ function handleSuggestionClick(type, id, title) {
     }
 
     // =============== RENDERING FUNCTIONS ===============
-    function createFilmCard(film) {
-        return `
-            <div class="col-xl-4 col-lg-6 col-md-6">
-                <div class="film-card" 
-                     onclick="viewFilmDetails(${film.id})"
-                     onmouseenter="showQuickPreview(${film.id})"
-                     onmouseleave="hideQuickPreview()">
+   function createFilmCard(film) {
+    return `
+        <div class="col-xl-4 col-lg-6 col-md-6">
+            <div class="film-card" 
+                 onclick="viewFilmDetails(${film.show_id})"
+                 onmouseenter="showQuickPreview(${film.show_id})"
+                 onmouseleave="hideQuickPreview()">
                     <img src="${film.poster}" class="poster" alt="${film.title}">
                     <div class="p-3">
                         <div class="d-flex justify-content-between align-items-start mb-2">
@@ -1065,30 +1027,75 @@ function handleSuggestionClick(type, id, title) {
     }
 
     // =============== QUICK PREVIEW ===============
-    let previewTimer;
+// =============== QUICK PREVIEW (AMBIL DARI DB VIA API) ===============
+let previewTimer;
+let previewAbort = null;
 
-    function showQuickPreview(filmId) {
-        if (!quickPreview) return;
-        clearTimeout(previewTimer);
-        previewTimer = setTimeout(() => {
-            const film = FILMS.find(f => f.id === filmId);
-            if (!film) return;
+function showQuickPreview(showId) {
+    if (!quickPreview) return;
 
-            currentPreviewFilm = film;
+    clearTimeout(previewTimer);
 
-            document.getElementById('previewTitle').textContent = film.title;
-            document.getElementById('previewPoster').src = film.poster;
+    previewTimer = setTimeout(async () => {
+        try {
+            // kalau ada request sebelumnya, batalin
+            if (previewAbort) previewAbort.abort();
+            previewAbort = new AbortController();
+
+            const res = await fetch(`/api/quick-preview/${showId}`, {
+                signal: previewAbort.signal
+            });
+
+            if (!res.ok) return;
+
+            const item = await res.json();
+            currentPreviewFilm = item;
+
+            // mapping aman (karena field DB beda sama dummy FILMS)
+            document.getElementById('previewTitle').textContent =
+                item.name || item.original_name || '-';
+
+            // poster: kalau kamu belum punya poster_url di view, kasih placeholder dulu
+            const posterEl = document.getElementById('previewPoster');
+            posterEl.src = item.poster_url || 'https://via.placeholder.com/300x450?text=No+Poster';
+
+            const year = item.first_air_year ? item.first_air_year : '-';
+            const type = item.type_name || '-';
+            const runtime = item.runtime ? `${item.runtime} min` : '';
+
             document.getElementById('previewMeta').textContent =
-                `${film.year} • ${film.type === 'movie' ? 'Film' : 'TV Show'} • ${film.runtime} min`;
-            document.getElementById('previewGenres').innerHTML =
-                film.genres.map(g => `<span class="chip">${g}</span>`).join('');
+                `${year} • ${type}${runtime ? ' • ' + runtime : ''}`;
+
+            // genres dari SQL biasanya string "Action,Drama"
+            const genresWrap = document.getElementById('previewGenres');
+            if (item.genres) {
+                genresWrap.innerHTML = item.genres
+                    .split(',')
+                    .map(g => g.trim())
+                    .filter(Boolean)
+                    .slice(0, 4)
+                    .map(g => `<span class="chip">${g}</span>`)
+                    .join('');
+            } else {
+                genresWrap.innerHTML = '';
+            }
+
+            const overview = item.overview || '';
             document.getElementById('previewSummary').textContent =
-                film.summary.length > 150 ? film.summary.substring(0, 150) + '...' : film.summary;
-            document.getElementById('previewRating').textContent = `⭐ ${film.rating}`;
+                overview.length > 150 ? overview.substring(0, 150) + '...' : overview;
+
+            const rating = (item.vote_average !== null && item.vote_average !== undefined)
+                ? item.vote_average
+                : '-';
+            document.getElementById('previewRating').textContent = `⭐ ${rating}`;
 
             quickPreview.style.display = 'flex';
-        }, 500);
-    }
+        } catch (e) {
+            // abort biasanya error, jadi ignore
+        }
+    }, 400);
+}
+
 
     function hideQuickPreview() {
         if (!quickPreview) return;
@@ -1101,10 +1108,18 @@ function handleSuggestionClick(type, id, title) {
         quickPreview.style.display = 'none';
     }
 
-    function viewFilmDetails(filmId = null) {
-        const film = filmId ? FILMS.find(f => f.id === filmId) : currentPreviewFilm;
-        if (film) window.location.href = `/film/${film.id}`;
+    function viewFilmDetails(showId = null) {
+    // kalau klik kartu explore masih kirim id dari dummy FILMS, masih aman
+    if (showId) {
+        window.location.href = `/film/${showId}`;
+        return;
     }
+
+    // kalau dari preview DB
+    if (currentPreviewFilm && currentPreviewFilm.show_id) {
+        window.location.href = `/film/${currentPreviewFilm.show_id}`;
+    }
+}
 
     window.showQuickPreview = showQuickPreview;
     window.hideQuickPreview = hideQuickPreview;
@@ -1165,9 +1180,24 @@ function handleSuggestionClick(type, id, title) {
 
 function init() {
     setupSearchSuggestions();
-    renderResults();       // masih buat grid Explore
-    initTrendingSwiper();  // supaya slider trending jalan
+    renderResults();        // grid Explore
+    // slider trending sudah di-render server pakai Blade + Swiper markup
+    // jadi cukup init swiper-nya saja:
+    swiper = new Swiper('.mySwiper', {
+        slidesPerView: 1,
+        spaceBetween: 10,
+        navigation: {
+            nextEl: '.swiper-button-next',
+            prevEl: '.swiper-button-prev',
+        },
+        breakpoints: {
+            640: { slidesPerView: 2, spaceBetween: 20 },
+            768: { slidesPerView: 3, spaceBetween: 30 },
+            1024: { slidesPerView: 4, spaceBetween: 30 },
+        },
+    });
 }
+
 
 document.addEventListener('DOMContentLoaded', init);
 

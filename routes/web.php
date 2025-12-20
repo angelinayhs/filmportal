@@ -6,6 +6,7 @@ use App\Http\Controllers\SearchController;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\ShowController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\QuickPreviewController;
 
 
 
@@ -219,5 +220,5 @@ Route::get('/film/{id}', function ($id) use ($films) {
 Route::get('/api/search-suggestions', [SearchController::class, 'suggestions']);
 Route::get('/film/{id}', [ShowController::class, 'detail']);
 Route::get('/', [HomeController::class, 'index']);
-
+Route::get('/api/quick-preview/{id}', [QuickPreviewController::class, 'show']);
 
