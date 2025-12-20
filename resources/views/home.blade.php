@@ -285,6 +285,14 @@
             font-weight: 800;
             font-size: 14px;
         }
+        /* FIX QUICK PREVIEW JANGAN KEDIP */
+    .quick-preview-overlay {
+        pointer-events: none;
+    }
+
+    .quick-preview-card {
+        pointer-events: auto;
+    }
     </style>
 </head>
 <body>
@@ -668,7 +676,6 @@
                 </div>
                 <div class="row">
                     <div class="col-4">
-                        <img id="previewPoster" src="" alt="" class="w-100 rounded">
                     </div>
                     <div class="col-8">
                         <div id="previewMeta" class="small text-muted mb-2"></div>
@@ -719,488 +726,372 @@
     </div>
 
     <script>
-        const FILMS = @json($films);
+        const FILMS_RAW = @json($films);
+
+    // Normalisasi data DB -> format yang dipakai UI/filter
+    const FILMS = (Array.isArray(FILMS_RAW) ? FILMS_RAW : []).map(x => {
+        const genresArr = (x.genres ?? '')
+            .toString()
+            .split(',')
+            .map(g => g.trim())
+            .filter(Boolean);
+
+        const typeLower = (x.type_name ?? '').toString().toLowerCase();
+        const mappedType =
+            typeLower.includes('scripted') || typeLower.includes('show') || typeLower.includes('tv')
+                ? 'show'
+                : 'movie'; // default
+
+        return {
+            id: x.show_id ?? x.id,
+            title: x.name ?? x.title ?? '-',
+            summary: x.overview ?? x.summary ?? '',
+            year: x.first_air_year ?? (x.first_air_date ? parseInt(String(x.first_air_date).slice(0,4)) : null) ?? 0,
+            type: mappedType,
+            rating: Number(x.vote_average ?? x.rating ?? 0),
+            runtime: Number(x.runtime ?? x.episode_run_time ?? x.eposide_run_time ?? 0),
+            popularity: Number(x.popularity ?? 0),
+            genres: genresArr,
+            country: x.origin_country ?? x.country ?? '',
+            language: x.original_language ?? x.language ?? '',
+            is_adult: (String(x.adult ?? x.is_adult ?? 'false') === 'true'),
+
+            // biar detail page tetep pakai show_id
+            show_id: x.show_id ?? x.id,
+            type_name: x.type_name ?? null,
+            raw: x
+        };
+    });
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
 
     <script>
-    // DOM Elements
-    const searchInput = document.getElementById('searchInput');
-    const searchSuggestions = document.getElementById('searchSuggestions');
-    const suggestionsList = document.getElementById('suggestionsList');
-    const typeFilter = document.getElementById('typeFilter');
-    const ratingFilter = document.getElementById('ratingFilter');
-    const sortSelect = document.getElementById('sortSelect');
-    const countryFilter = document.getElementById('countryFilter');
-    const languageFilter = document.getElementById('languageFilter');
-    const yearRange = document.getElementById('yearRange');
-    const yearValue = document.getElementById('yearValue');
-    const durationRange = document.getElementById('durationRange');
-    const durationValue = document.getElementById('durationValue');
-    const adultContentToggle = document.getElementById('adultContentToggle');
-    const clearFilters = document.getElementById('clearFilters');
-    const resultsGrid = document.getElementById('resultsGrid');
-    const topShowsList = document.getElementById('topShowsList');
-    const quickPreview = document.getElementById('quickPreview');
+/* =========================
+   DOM ELEMENTS
+========================= */
+const searchInput = document.getElementById('searchInput');
+const searchSuggestions = document.getElementById('searchSuggestions');
+const suggestionsList = document.getElementById('suggestionsList');
 
-    let swiper;
-    let currentPreviewFilm = null;
+const typeFilter = document.getElementById('typeFilter');
+const ratingFilter = document.getElementById('ratingFilter');
+const sortSelect = document.getElementById('sortSelect');
+const countryFilter = document.getElementById('countryFilter');
+const languageFilter = document.getElementById('languageFilter');
+const yearRange = document.getElementById('yearRange');
+const yearValue = document.getElementById('yearValue');
+const durationRange = document.getElementById('durationRange');
+const durationValue = document.getElementById('durationValue');
+const adultContentToggle = document.getElementById('adultContentToggle');
+const clearFilters = document.getElementById('clearFilters');
+const resultsGrid = document.getElementById('resultsGrid');
 
-    // =============== SMART CONTEXTUAL SEARCH (PAKAI API) ===============
-    let suggestionTimeout = null;
-
-    function setupSearchSuggestions() {
-    let typingTimer = null;
-
-    searchInput.addEventListener('input', function (e) {
-        const query = e.target.value.trim();
-
-        // kalau pendek / kosong, tutup dropdown
-        if (query.length < 2) {
-            searchSuggestions.style.display = 'none';
-            suggestionsList.innerHTML = '';
-            return;
-        }
-
-        // debounce dikit biar gak spam API
-        if (typingTimer) clearTimeout(typingTimer);
-
-        typingTimer = setTimeout(() => {
-            fetch(`/api/search-suggestions?q=${encodeURIComponent(query)}`)
-                .then(res => res.json())
-                .then(data => {
-                    displaySuggestions(data, query);
-                })
-                .catch(err => {
-                    console.error('Error fetch suggestions:', err);
-                    searchSuggestions.style.display = 'none';
-                });
-        }, 300);
-    });
-
-    // klik di luar -> tutup dropdown
-    document.addEventListener('click', function (e) {
-        if (!searchInput.contains(e.target) && !searchSuggestions.contains(e.target)) {
-            searchSuggestions.style.display = 'none';
-        }
-    });
-}
-
-
-    function displaySuggestions(suggestions, query) {
-    if (!Array.isArray(suggestions) || suggestions.length === 0) {
-        searchSuggestions.style.display = 'none';
-        suggestionsList.innerHTML = '';
-        return;
-    }
-
-    suggestionsList.innerHTML = suggestions.map(item => `
-    <div class="suggestion-item" 
-         onclick="goToSuggestion('${item.result_type}', '${item.id}')">
-        <div class="fw-semibold">${highlightText(item.title, query)}</div>
-        <small class="text-muted">
-            ${item.result_type === 'person' ? 'Person' : 'Show'}
-            ${item.genres ? ' • ' + item.genres : ''}
-        </small>
-    </div>
-`).join('');
-
-
-    searchSuggestions.style.display = 'block';
-}
-function handleSuggestionClick(type, id, title) {
-    // Untuk sekarang: isi input dengan judul yang dipilih
-    // lalu pakai mekanisme filter existing (renderResults)
-    searchInput.value = title;
-    searchSuggestions.style.display = 'none';
-
-    // ini akan filter FILMS lokal dengan judul yg barusan dipilih
-    if (typeof renderResults === 'function') {
-        renderResults();
-    }
-}
-
-    function highlightText(text, query) {
-        if (!query) return text;
-        const regex = new RegExp(`(${query})`, 'gi');
-        return text.replace(regex, '<mark>$1</mark>');
-    }
-
-    function goToSuggestion(type, id) {
-        if (type === 'show') {
-            // route detail show dari SQL view → kita pakai /film/{id}
-            window.location.href = `/film/${id}`;
-        } else {
-            alert('Halaman detail untuk person belum dibuat 🙂');
-        }
-
-        searchSuggestions.style.display = 'none';
-        searchInput.value = '';
-    }
-
-    // =============== ADVANCED FILTERING (masih pakai FILMS dummy) ===============
-    function filterAndSortFilms() {
-        const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
-        const type = typeFilter ? typeFilter.value : '';
-        const minRating = ratingFilter ? parseFloat(ratingFilter.value || '0') : 0;
-        const sort = sortSelect ? sortSelect.value : 'popularity';
-        const country = countryFilter ? countryFilter.value : '';
-        const language = languageFilter ? languageFilter.value : '';
-        const maxYear = yearRange ? parseInt(yearRange.value) : 2024;
-        const maxDuration = durationRange ? parseInt(durationRange.value) : 200;
-        const showAdult = adultContentToggle ? adultContentToggle.checked : true;
-
-        const selectedGenres = Array.from(
-            document.querySelectorAll('.genre-checkbox:checked')
-        ).map(cb => cb.value);
-
-        let list = [...FILMS];
-
-        if (query) {
-            const tokens = query.split(/\s+/);
-            list = list.filter(film => {
-                const haystack = (
-                    film.title + ' ' +
-                    film.director + ' ' +
-                    film.genres.join(' ') + ' ' +
-                    film.cast.join(' ') + ' ' +
-                    film.tags.join(' ') + ' ' +
-                    film.country + ' ' +
-                    film.language
-                ).toLowerCase();
-
-                return tokens.every(t => haystack.includes(t));
-            });
-        }
-
-        if (type) list = list.filter(f => f.type === type);
-        if (minRating > 0) list = list.filter(f => f.rating >= minRating);
-        if (country) list = list.filter(f => f.country === country);
-        if (language) list = list.filter(f => f.language === language);
-        if (maxYear < 2024) list = list.filter(f => f.year <= maxYear);
-        if (maxDuration < 200) list = list.filter(f => f.runtime <= maxDuration);
-        if (!showAdult) list = list.filter(f => !f.is_adult);
-        if (selectedGenres.length > 0) {
-            list = list.filter(f =>
-                f.genres.some(genre =>
-                    selectedGenres.some(selected =>
-                        genre.toLowerCase().includes(selected)
-                    )
-                )
-            );
-        }
-
-        list.sort((a, b) => {
-            switch (sort) {
-                case 'rating': return b.rating - a.rating;
-                case 'year': return b.year - a.year;
-                case 'title': return a.title.localeCompare(b.title);
-                default: return b.popularity - a.popularity;
-            }
-        });
-
-        return list;
-    }
-
-    // =============== RENDERING FUNCTIONS ===============
-   function createFilmCard(film) {
-    return `
-        <div class="col-xl-4 col-lg-6 col-md-6">
-            <div class="film-card" 
-                 onclick="viewFilmDetails(${film.show_id})"
-                 onmouseenter="showQuickPreview(${film.show_id})"
-                 onmouseleave="hideQuickPreview()">
-                    <img src="${film.poster}" class="poster" alt="${film.title}">
-                    <div class="p-3">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="mb-0 flex-grow-1 me-2">${film.title}</h6>
-                            <span class="rating-badge">⭐ ${film.rating}</span>
-                        </div>
-                        <div class="mb-2">
-                            <small class="text-muted">${film.year} • ${film.type === 'movie' ? 'Film' : 'TV Show'}</small>
-                        </div>
-                        <div class="mb-2">
-                            ${film.genres.slice(0, 2).map(genre =>
-                                `<span class="chip">${genre}</span>`
-                            ).join('')}
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <small class="text-muted">${film.runtime} min</small>
-                            <small class="text-muted">${film.country}</small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    function renderResults() {
-        if (!resultsGrid) return;
-        const list = filterAndSortFilms();
-        resultsGrid.innerHTML = list.map(film => createFilmCard(film)).join('') ||
-            '<div class="col-12 text-center py-5"><p class="text-muted">No results found. Try adjusting your filters.</p></div>';
-    }
-
-    function renderTrendingSlider() {
-        if (!trendingSwiper) return;
-
-        const trendingList = [...FILMS]
-            .sort((a, b) => b.popularity - a.popularity)
-            .slice(0, 6);
-
-        trendingSwiper.innerHTML = trendingList.map(film => `
-            <div class="swiper-slide">
-                <div class="position-relative h-100">
-                    <img src="${film.poster}" alt="${film.title}" 
-                         style="width:100%; height:300px; object-fit:cover;">
-                    <div class="position-absolute bottom-0 start-0 end-0 p-3 text-white" 
-                         style="background: linear-gradient(transparent, rgba(0,0,0,0.8));">
-                        <h5 class="mb-1">${film.title}</h5>
-                        <div class="d-flex align-items-center">
-                            <span class="rating-badge me-2">⭐ ${film.rating}</span>
-                            <small>${film.year} • ${film.type === 'movie' ? 'Film' : 'TV Show'}</small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `).join('');
-
-        if (swiper) swiper.destroy();
-
-        swiper = new Swiper('.mySwiper', {
-            slidesPerView: 1,
-            spaceBetween: 10,
-            navigation: {
-                nextEl: '.swiper-button-next',
-                prevEl: '.swiper-button-prev',
-            },
-            breakpoints: {
-                640: { slidesPerView: 2, spaceBetween: 20 },
-                768: { slidesPerView: 3, spaceBetween: 30 },
-                1024: { slidesPerView: 4, spaceBetween: 30 },
-            },
-        });
-    }
-
-    function renderTopCharts() {
-        if (!topMoviesList || !topShowsList) return;
-
-        const topMovies = FILMS
-            .filter(f => f.type === 'movie')
-            .sort((a, b) => b.popularity - a.popularity)
-            .slice(0, 10);
-
-        topMoviesList.innerHTML = topMovies.map((film, index) => `
-            <div class="chart-item">
-                <div class="d-flex align-items-center">
-                    <div class="rank-badge me-3">${index + 1}</div>
-                    <img src="${film.poster}" alt="${film.title}" 
-                         style="width: 40px; height: 60px; object-fit: cover; border-radius: 6px;">
-                    <div class="ms-3 flex-grow-1">
-                        <div class="fw-semibold">${film.title}</div>
-                        <small class="text-muted">${film.year} • ⭐ ${film.rating}</small>
-                    </div>
-                </div>
-            </div>
-        `).join('');
-
-        const topShows = FILMS
-            .filter(f => f.type === 'show')
-            .sort((a, b) => b.popularity - a.popularity)
-            .slice(0, 10);
-
-        topShowsList.innerHTML = topShows.map((film, index) => `
-            <div class="chart-item">
-                <div class="d-flex align-items-center">
-                    <div class="rank-badge me-3">${index + 1}</div>
-                    <img src="${film.poster}" alt="${film.title}" 
-                         style="width: 40px; height: 60px; object-fit: cover; border-radius: 6px;">
-                    <div class="ms-3 flex-grow-1">
-                        <div class="fw-semibold">${film.title}</div>
-                        <small class="text-muted">${film.year} • ⭐ ${film.rating}</small>
-                    </div>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    // =============== QUICK PREVIEW ===============
-// =============== QUICK PREVIEW (AMBIL DARI DB VIA API) ===============
-let previewTimer;
+const quickPreview = document.getElementById('quickPreview');
+let currentPreviewFilm = null;
 let previewAbort = null;
+let swiper = null;
 
-function showQuickPreview(showId) {
-    if (!quickPreview) return;
+/* =========================
+   SEARCH SUGGESTIONS (API)
+========================= */
+function setupSearchSuggestions() {
+  if (!searchInput) return;
 
-    clearTimeout(previewTimer);
+  let typingTimer = null;
 
-    previewTimer = setTimeout(async () => {
-        try {
-            // kalau ada request sebelumnya, batalin
-            if (previewAbort) previewAbort.abort();
-            previewAbort = new AbortController();
+  searchInput.addEventListener('input', (e) => {
+    const query = (e.target.value || '').trim();
 
-            const res = await fetch(`/api/quick-preview/${showId}`, {
-                signal: previewAbort.signal
-            });
+    if (query.length < 2) {
+      if (searchSuggestions) searchSuggestions.style.display = 'none';
+      if (suggestionsList) suggestionsList.innerHTML = '';
+      return;
+    }
 
-            if (!res.ok) return;
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(() => {
+      fetch(`/api/search-suggestions?q=${encodeURIComponent(query)}`)
+        .then(res => res.json())
+        .then(data => displaySuggestions(data, query))
+        .catch(() => {
+          if (searchSuggestions) searchSuggestions.style.display = 'none';
+        });
+    }, 250);
+  });
 
-            const item = await res.json();
-            currentPreviewFilm = item;
-
-            // mapping aman (karena field DB beda sama dummy FILMS)
-            document.getElementById('previewTitle').textContent =
-                item.name || item.original_name || '-';
-
-            // poster: kalau kamu belum punya poster_url di view, kasih placeholder dulu
-            const posterEl = document.getElementById('previewPoster');
-            posterEl.src = item.poster_url || 'https://via.placeholder.com/300x450?text=No+Poster';
-
-            const year = item.first_air_year ? item.first_air_year : '-';
-            const type = item.type_name || '-';
-            const runtime = item.runtime ? `${item.runtime} min` : '';
-
-            document.getElementById('previewMeta').textContent =
-                `${year} • ${type}${runtime ? ' • ' + runtime : ''}`;
-
-            // genres dari SQL biasanya string "Action,Drama"
-            const genresWrap = document.getElementById('previewGenres');
-            if (item.genres) {
-                genresWrap.innerHTML = item.genres
-                    .split(',')
-                    .map(g => g.trim())
-                    .filter(Boolean)
-                    .slice(0, 4)
-                    .map(g => `<span class="chip">${g}</span>`)
-                    .join('');
-            } else {
-                genresWrap.innerHTML = '';
-            }
-
-            const overview = item.overview || '';
-            document.getElementById('previewSummary').textContent =
-                overview.length > 150 ? overview.substring(0, 150) + '...' : overview;
-
-            const rating = (item.vote_average !== null && item.vote_average !== undefined)
-                ? item.vote_average
-                : '-';
-            document.getElementById('previewRating').textContent = `⭐ ${rating}`;
-
-            quickPreview.style.display = 'flex';
-        } catch (e) {
-            // abort biasanya error, jadi ignore
-        }
-    }, 400);
+  document.addEventListener('click', (e) => {
+    if (!searchInput.contains(e.target) && searchSuggestions && !searchSuggestions.contains(e.target)) {
+      searchSuggestions.style.display = 'none';
+    }
+  });
 }
 
-
-    function hideQuickPreview() {
-        if (!quickPreview) return;
-        clearTimeout(previewTimer);
-        quickPreview.style.display = 'none';
-    }
-
-    function closeQuickPreview() {
-        if (!quickPreview) return;
-        quickPreview.style.display = 'none';
-    }
-
-    function viewFilmDetails(showId = null) {
-    // kalau klik kartu explore masih kirim id dari dummy FILMS, masih aman
-    if (showId) {
-        window.location.href = `/film/${showId}`;
-        return;
-    }
-
-    // kalau dari preview DB
-    if (currentPreviewFilm && currentPreviewFilm.show_id) {
-        window.location.href = `/film/${currentPreviewFilm.show_id}`;
-    }
+function highlightText(text, query) {
+  if (!query) return text;
+  const regex = new RegExp(`(${query})`, 'gi');
+  return String(text).replace(regex, '<mark>$1</mark>');
 }
 
-    window.showQuickPreview = showQuickPreview;
-    window.hideQuickPreview = hideQuickPreview;
-    window.closeQuickPreview = closeQuickPreview;
-    window.viewFilmDetails = viewFilmDetails;
-    window.goToSuggestion = goToSuggestion;
+function displaySuggestions(suggestions, query) {
+  if (!Array.isArray(suggestions) || suggestions.length === 0) {
+    if (searchSuggestions) searchSuggestions.style.display = 'none';
+    if (suggestionsList) suggestionsList.innerHTML = '';
+    return;
+  }
 
-    // =============== EVENT LISTENERS & INIT ===============
-    [searchInput, typeFilter, ratingFilter, sortSelect, countryFilter, languageFilter, adultContentToggle]
-        .forEach(el => {
-            if (!el) return;
-            if (el === searchInput) {
-                // searchInput: filter grid tetap jalan, tapi sudah ada listener API di setupSearchSuggestions
-                el.addEventListener('change', renderResults);
-            } else {
-                el.addEventListener('input', renderResults);
-                el.addEventListener('change', renderResults);
-            }
-        });
+  suggestionsList.innerHTML = suggestions.map(item => `
+    <div class="suggestion-item" onclick="goToSuggestion('${item.result_type}', '${item.id}')">
+      <div class="fw-semibold">${highlightText(item.title, query)}</div>
+      <small class="text-muted">
+        ${item.result_type === 'person' ? 'Person' : 'Show'}
+        ${item.genres ? ' • ' + item.genres : ''}
+      </small>
+    </div>
+  `).join('');
 
-    if (yearRange) {
-        yearRange.addEventListener('input', function () {
-            yearValue.textContent = this.value;
-            renderResults();
-        });
-    }
+  searchSuggestions.style.display = 'block';
+}
 
-    if (durationRange) {
-        durationRange.addEventListener('input', function () {
-            durationValue.textContent = this.value === '200' ? '200+' : this.value + ' min';
-            renderResults();
-        });
-    }
+function goToSuggestion(type, id) {
+  if (type === 'show') {
+    window.location.href = `/film/${id}`;
+  } else {
+    alert('Halaman detail person belum dibuat 🙂');
+  }
+  if (searchSuggestions) searchSuggestions.style.display = 'none';
+  if (searchInput) searchInput.value = '';
+}
+window.goToSuggestion = goToSuggestion;
 
-    document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', renderResults);
+/* =========================
+   FILTER + SORT
+========================= */
+function filterAndSortFilms() {
+  const query = (searchInput?.value || '').trim().toLowerCase();
+  const typeVal = typeFilter?.value || '';
+  const minRating = parseFloat(ratingFilter?.value || '0');
+  const sortVal = sortSelect?.value || 'popularity';
+  const countryVal = countryFilter?.value || '';
+  const languageVal = languageFilter?.value || '';
+  const maxYear = parseInt(yearRange?.value || '2024', 10);
+  const maxDuration = parseInt(durationRange?.value || '200', 10);
+  const showAdult = adultContentToggle?.checked ?? true;
+
+  const selectedGenres = Array.from(document.querySelectorAll('.genre-checkbox:checked'))
+    .map(cb => (cb.value || '').toLowerCase());
+
+  let list = Array.isArray(FILMS) ? [...FILMS] : [];
+
+  // SEARCH (title/summary/genres/type/country/language)
+  if (query) {
+    const tokens = query.split(/\s+/);
+    list = list.filter(f => {
+      const haystack = (
+        (f.title ?? '') + ' ' +
+        (f.summary ?? '') + ' ' +
+        ((Array.isArray(f.genres) ? f.genres.join(' ') : '') ?? '') + ' ' +
+        (f.type_name ?? f.type ?? '') + ' ' +
+        (f.country ?? '') + ' ' +
+        (f.language ?? '')
+      ).toLowerCase();
+
+      return tokens.every(t => haystack.includes(t));
     });
+  }
 
-    if (clearFilters) {
-        clearFilters.addEventListener('click', () => {
-            if (typeFilter) typeFilter.value = '';
-            if (ratingFilter) ratingFilter.value = '0';
-            if (sortSelect) sortSelect.value = 'popularity';
-            if (countryFilter) countryFilter.value = '';
-            if (languageFilter) languageFilter.value = '';
-            if (yearRange) { yearRange.value = '2024'; yearValue.textContent = '2024'; }
-            if (durationRange) { durationRange.value = '200'; durationValue.textContent = '200+'; }
-            if (adultContentToggle) adultContentToggle.checked = true;
-            if (searchInput) searchInput.value = '';
+  // FILTERS
+  if (typeVal) list = list.filter(f => f.type === typeVal);
+  if (minRating > 0) list = list.filter(f => (f.rating || 0) >= minRating);
+  if (countryVal) list = list.filter(f => (f.country || '') === countryVal);
+  if (languageVal) list = list.filter(f => (f.language || '') === languageVal);
+  if (maxYear < 2024) list = list.filter(f => (f.year || 0) <= maxYear);
+  if (maxDuration < 200) list = list.filter(f => (f.runtime || 0) <= maxDuration);
+  if (!showAdult) list = list.filter(f => !f.is_adult);
 
-            document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
-                checkbox.checked = false;
-            });
+  if (selectedGenres.length > 0) {
+    list = list.filter(f => {
+      const gs = (f.genres || []).map(x => String(x).toLowerCase());
+      return selectedGenres.some(sel => gs.some(g => g.includes(sel)));
+    });
+  }
 
-            renderResults();
-        });
+  // SORT
+  list.sort((a, b) => {
+    switch (sortVal) {
+      case 'rating': return (b.rating || 0) - (a.rating || 0);
+      case 'year': return (b.year || 0) - (a.year || 0);
+      case 'title': return (a.title || '').localeCompare(b.title || '');
+      default: return (b.popularity || 0) - (a.popularity || 0);
     }
+  });
 
+  return list;
+}
+
+/* =========================
+   RENDER GRID (NO IMAGE)
+========================= */
+function createFilmCard(f) {
+  const genresHtml = (f.genres || []).slice(0, 2).map(g => `<span class="chip">${g}</span>`).join('');
+  const meta = `${f.year || '-'} • ${f.type === 'movie' ? 'Film' : 'TV Show'}${f.runtime ? ' • ' + f.runtime + ' min' : ''}`;
+
+  return `
+    <div class="col-xl-4 col-lg-6 col-md-6">
+      <div class="film-card p-3" onclick="openQuickPreview(${f.show_id})" style="min-height: 190px;">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <h6 class="mb-0 flex-grow-1 me-2">${f.title}</h6>
+          <span class="rating-badge">⭐ ${f.rating ? f.rating.toFixed(1) : '-'}</span>
+        </div>
+        <div class="mb-2">
+          <small class="text-muted">${meta}</small>
+        </div>
+        <div class="mb-2">${genresHtml}</div>
+        <p class="small text-muted mb-0" style="max-height: 48px; overflow:hidden;">
+          ${(f.summary || '').slice(0, 120)}${(f.summary || '').length > 120 ? '...' : ''}
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+function renderResults() {
+  if (!resultsGrid) return;
+  const list = filterAndSortFilms();
+  resultsGrid.innerHTML = list.length
+    ? list.map(createFilmCard).join('')
+    : `<div class="col-12 text-center py-5"><p class="text-muted">No results found. Try adjusting your filters.</p></div>`;
+}
+
+/* =========================
+   QUICK PREVIEW (CLICK ONLY)
+========================= */
+async function openQuickPreview(showId) {
+  if (!quickPreview) return;
+
+  try {
+    if (previewAbort) previewAbort.abort();
+    previewAbort = new AbortController();
+
+    const res = await fetch(`/api/quick-preview/${showId}`, { signal: previewAbort.signal });
+    if (!res.ok) return;
+
+    const item = await res.json();
+    currentPreviewFilm = item;
+
+    document.getElementById('previewTitle').textContent = item.name || item.original_name || '-';
+
+    const year = item.first_air_year ?? '-';
+    const type = item.type_name ?? '-';
+    const runtime = item.runtime ? `${item.runtime} min` : '';
+    document.getElementById('previewMeta').textContent = `${year} • ${type}${runtime ? ' • ' + runtime : ''}`;
+
+    const genresWrap = document.getElementById('previewGenres');
+    genresWrap.innerHTML = item.genres
+      ? item.genres.split(',').map(g => g.trim()).filter(Boolean).slice(0, 4).map(g => `<span class="chip">${g}</span>`).join('')
+      : '';
+
+    const overview = item.overview || '';
+    document.getElementById('previewSummary').textContent = overview.length > 150 ? overview.slice(0, 150) + '...' : overview;
+
+    const rating = (item.vote_average !== null && item.vote_average !== undefined) ? item.vote_average : '-';
+    document.getElementById('previewRating').textContent = `⭐ ${rating}`;
+
+    quickPreview.style.display = 'flex';
+  } catch (e) {
+    // ignore abort
+  }
+}
+
+function closeQuickPreview() {
+  if (!quickPreview) return;
+  quickPreview.style.display = 'none';
+}
+
+function viewFilmDetails() {
+  if (!currentPreviewFilm) return;
+  window.location.href = `/film/${currentPreviewFilm.show_id}`;
+}
+
+if (quickPreview) {
+  quickPreview.addEventListener('click', (e) => {
+    if (e.target === quickPreview) closeQuickPreview();
+  });
+}
+
+window.openQuickPreview = openQuickPreview;
+window.closeQuickPreview = closeQuickPreview;
+window.viewFilmDetails = viewFilmDetails;
+
+/* =========================
+   LISTENERS
+========================= */
+function hookFilters() {
+  [typeFilter, ratingFilter, sortSelect, countryFilter, languageFilter, adultContentToggle].forEach(el => {
+    if (!el) return;
+    el.addEventListener('change', renderResults);
+    el.addEventListener('input', renderResults);
+  });
+
+  if (searchInput) searchInput.addEventListener('change', renderResults);
+
+  if (yearRange) {
+    yearRange.addEventListener('input', function () {
+      if (yearValue) yearValue.textContent = this.value;
+      renderResults();
+    });
+  }
+
+  if (durationRange) {
+    durationRange.addEventListener('input', function () {
+      if (durationValue) durationValue.textContent = (this.value === '200') ? '200+' : `${this.value} min`;
+      renderResults();
+    });
+  }
+
+  document.querySelectorAll('.genre-checkbox').forEach(cb => cb.addEventListener('change', renderResults));
+
+  if (clearFilters) {
+    clearFilters.addEventListener('click', () => {
+      if (typeFilter) typeFilter.value = '';
+      if (ratingFilter) ratingFilter.value = '0';
+      if (sortSelect) sortSelect.value = 'popularity';
+      if (countryFilter) countryFilter.value = '';
+      if (languageFilter) languageFilter.value = '';
+      if (yearRange) { yearRange.value = '2024'; if (yearValue) yearValue.textContent = '2024'; }
+      if (durationRange) { durationRange.value = '200'; if (durationValue) durationValue.textContent = '200+'; }
+      if (adultContentToggle) adultContentToggle.checked = true;
+      if (searchInput) searchInput.value = '';
+      document.querySelectorAll('.genre-checkbox').forEach(cb => cb.checked = false);
+      renderResults();
+    });
+  }
+}
+
+/* =========================
+   INIT
+========================= */
 function init() {
-    setupSearchSuggestions();
-    renderResults();        // grid Explore
-    // slider trending sudah di-render server pakai Blade + Swiper markup
-    // jadi cukup init swiper-nya saja:
-    swiper = new Swiper('.mySwiper', {
-        slidesPerView: 1,
-        spaceBetween: 10,
-        navigation: {
-            nextEl: '.swiper-button-next',
-            prevEl: '.swiper-button-prev',
-        },
-        breakpoints: {
-            640: { slidesPerView: 2, spaceBetween: 20 },
-            768: { slidesPerView: 3, spaceBetween: 30 },
-            1024: { slidesPerView: 4, spaceBetween: 30 },
-        },
-    });
-}
+  setupSearchSuggestions();
+  hookFilters();
+  renderResults();
 
+  // Trending slider dari Blade sudah ada, tinggal init Swiper
+  swiper = new Swiper('.mySwiper', {
+    slidesPerView: 1,
+    spaceBetween: 10,
+    navigation: { nextEl: '.swiper-button-next', prevEl: '.swiper-button-prev' },
+    breakpoints: {
+      640: { slidesPerView: 2, spaceBetween: 20 },
+      768: { slidesPerView: 3, spaceBetween: 30 },
+      1024: { slidesPerView: 4, spaceBetween: 30 },
+    },
+  });
+}
 
 document.addEventListener('DOMContentLoaded', init);
-
 </script>
+
 </body>
 </html>

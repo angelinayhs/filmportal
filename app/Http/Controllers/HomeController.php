@@ -7,55 +7,58 @@ use Illuminate\Support\Facades\DB;
 class HomeController extends Controller
 {
     public function index()
-    {
-        // 1. Data utama untuk grid Explore
-        $films = DB::table('vw_show_details')
-            ->orderByDesc('popularity')
-            ->limit(80)
-            ->get();
+{
+    // 1) Explore grid
+    $films = DB::table('vw_show_details')
+        ->orderByDesc('popularity')
+        ->limit(80)
+        ->get();
 
-        // 2. Trending & Top Charts (Fitur 5)
-        $trendingRaw = collect(DB::select(
-            'EXEC dbo.sp_get_trending_content ?, ?, ?',
-            ['weekly_trending', null, 40]
-        ));
+// 2. Trending & Top Charts (Fitur 5)
+// =======================
+// TRENDING NOW (dari vw_trending_content)
+// =======================
+$trendingSlider = DB::table('vw_trending_content')
+    ->where('trending_period', 'weekly_trending')
+    ->orderByDesc('trending_score')
+    ->limit(8)
+    ->get();
 
-        $trendingSlider = $trendingRaw->take(8);
+// =======================
+// TOP 10 SERIAL MINGGU INI (dari vw_trending_content)
+// =======================
+$topShows = DB::table('vw_trending_content')
+    ->where('trending_period', 'weekly_trending')
+    ->whereRaw('(COALESCE(number_of_seasons, 0) > 0 OR COALESCE(number_of_episodes, 0) > 0)')
+    ->orderByDesc('trending_score')
+    ->limit(10)
+    ->get();
 
-        $topMovies = $trendingRaw
-            ->where('type_name', 'Scripted')
-            ->values()
-            ->take(10);
+// =======================
+// TOP 10 FILM HARI INI (fallback dari vw_show_details)
+// (karena di trending_content film kosong)
+// =======================
+$topMovies = DB::table('vw_show_details')
+    ->orderByDesc('popularity')
+    ->limit(10)
+    ->get();
+    // 5) Daily highlights
+    $highlights = DB::table('vw_daily_highlights')->get();
+    $filmOfTheDay = $highlights->firstWhere('highlight_type', 'film_of_the_day');
 
-        $topShows = $trendingRaw
-            ->where('type_name', '!=', 'Scripted')
-            ->values()
-            ->take(10);
+    $historyItems = $highlights->where('highlight_type', 'this_day_in_history')->values();
+    $half = (int) ceil($historyItems->count() / 2);
+    $historyLeft  = $historyItems->slice(0, $half)->values();
+    $historyRight = $historyItems->slice($half)->values();
 
-        // 3. DAILY HIGHLIGHTS (Fitur 6)
-        $highlights = DB::table('vw_daily_highlights')->get();
-
-        // film_of_the_day → 1 item (boleh null)
-        $filmOfTheDay = $highlights->firstWhere('highlight_type', 'film_of_the_day');
-
-        // this_day_in_history → bisa banyak item
-        $historyItems = $highlights
-            ->where('highlight_type', 'this_day_in_history')
-            ->values();
-
-        // Bagi jadi 2 kolom
-        $half = (int) ceil($historyItems->count() / 2);
-        $historyLeft  = $historyItems->slice(0, $half)->values();
-        $historyRight = $historyItems->slice($half)->values();
-
-        return view('home', compact(
-            'films',
-            'trendingSlider',
-            'topMovies',
-            'topShows',
-            'filmOfTheDay',
-            'historyLeft',
-            'historyRight'
-        ));
-    }
+    return view('home', compact(
+        'films',
+        'trendingSlider',
+        'topMovies',
+        'topShows',
+        'filmOfTheDay',
+        'historyLeft',
+        'historyRight'
+    ));
+}
 }
