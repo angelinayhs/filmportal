@@ -333,14 +333,24 @@
                     <a class="nav-link nav-menu" href="#tvshows">TV Shows</a>
                 </li>
                 
-                <!-- Executive Login Button -->
-                <li class="nav-item">
-                    <button class="btn btn-primary btn-sm"
-                            data-bs-toggle="modal"
-                            data-bs-target="#execLoginModal">
-                        <i class="fas fa-user-tie me-1"></i>Executive Login
-                    </button>
-                </li>
+                <!-- Marketing Login Button -->
+<li class="nav-item">
+    <button class="btn btn-success btn-sm"
+            data-bs-toggle="modal"
+            data-bs-target="#marketingLoginModal">
+        <i class="fas fa-bullhorn me-1"></i>Marketing Login
+    </button>
+</li>
+
+<!-- Executive Login Button -->
+<li class="nav-item">
+    <button class="btn btn-primary btn-sm"
+            data-bs-toggle="modal"
+            data-bs-target="#execLoginModal">
+        <i class="fas fa-user-tie me-1"></i>Executive Login
+    </button>
+</li>
+
             </ul>
         </div>
     </div>
@@ -724,6 +734,39 @@
             </div>
         </div>
     </div>
+<!-- MARKETING LOGIN MODAL -->
+<div class="modal fade" id="marketingLoginModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-bullhorn me-2"></i>Marketing Login</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <form method="POST" action="/marketing-login">
+                @csrf
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Email Marketing</label>
+                        <input type="email" class="form-control" name="email" placeholder="mkt@studio.com" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control" name="password" placeholder="marketing123" required>
+                    </div>
+                    <div class="form-text">
+                        Demo credentials: <b>mkt@studio.com</b> / <b>marketing123</b>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Login as Marketing</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
     <script>
         const FILMS_RAW = @json($films);

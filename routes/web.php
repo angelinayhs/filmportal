@@ -8,25 +8,25 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\MarketingController;
 
 // =======================
-// ROLE 1 – HOME (DB)
+// HOME
 // =======================
 Route::get('/', [HomeController::class, 'index']);
 
 // =======================
-// DETAIL SHOW (DB)
+// DETAIL SHOW
 // =======================
 Route::get('/film/{id}', [ShowController::class, 'detail']);
 
 // =======================
-// SEARCH SUGGESTIONS (API style tapi boleh di web.php)
+// SEARCH SUGGESTIONS
 // =======================
 Route::get('/api/search-suggestions', [SearchController::class, 'suggestions']);
 
+
 // =======================
-// LOGIN EXECUTIVE (ROLE 2)
+// LOGIN EXECUTIVE
 // =======================
 Route::post('/executive-login', function (Request $request) {
-
     $email = $request->input('email');
     $password = $request->input('password');
 
@@ -35,23 +35,45 @@ Route::post('/executive-login', function (Request $request) {
         return redirect('/executive');
     }
 
-    return redirect('/')
-        ->with('login_error', 'Email atau password executive salah.');
+    return redirect('/')->with('login_error', 'Email atau password executive salah.');
 });
 
 Route::get('/executive', function () {
     if (session('role') !== 'executive') {
-        return redirect('/')
-            ->with('login_error', 'Kamu harus login sebagai Executive dulu.');
+        return redirect('/')->with('login_error', 'Kamu harus login sebagai Executive dulu.');
     }
-
     return view('executive.dashboard');
 });
 
+
+// =======================
+// LOGIN MARKETING
+// =======================
+Route::post('/marketing-login', function (Request $request) {
+    $email = $request->input('email');
+    $password = $request->input('password');
+
+    if ($email === 'mkt@studio.com' && $password === 'marketing123') {
+        session(['role' => 'marketing']);
+        return redirect('/marketing');
+    }
+
+    return redirect('/')->with('login_error', 'Email atau password marketing salah.');
+});
+
+// ✅ GUARD MARKETING TANPA middleware closure
+Route::get('/marketing', function () {
+    if (session('role') !== 'marketing') {
+        return redirect('/')->with('login_error', 'Kamu harus login sebagai Marketing dulu.');
+    }
+    return app(MarketingController::class)->index(request());
+});
+
+
+// =======================
+// LOGOUT
+// =======================
 Route::post('/logout', function () {
     session()->forget('role');
     return redirect('/');
 });
-
-
-Route::get('/marketing', [MarketingController::class, 'index']);
