@@ -419,15 +419,24 @@
                             </p>
                         @endif
 
-                        <small class="text-muted d-block mb-3">
-                            @if($filmOfTheDay->original_release_date)
-                                Rilis asli:
-                                {{ \Carbon\Carbon::parse($filmOfTheDay->original_release_date)->format('Y-m-d') }}
-                                @if(!is_null($filmOfTheDay->years_ago))
-                                    ({{ $filmOfTheDay->years_ago }} tahun lalu)
-                                @endif
-                            @endif
-                        </small>
+                       <small class="text-muted d-block mb-3">
+    @if($filmOfTheDay->original_release_date)
+        @php
+            // Pakai strtotime supaya aman untuk format seperti "Apr 3 2016 12:00:00:AM"
+            $releaseDate = \Carbon\Carbon::createFromTimestamp(
+                strtotime($filmOfTheDay->original_release_date)
+            );
+        @endphp
+
+        Rilis asli:
+        {{ $releaseDate->format('Y-m-d') }}
+
+        @if(!is_null($filmOfTheDay->years_ago))
+            ({{ $filmOfTheDay->years_ago }} tahun lalu)
+        @endif
+    @endif
+</small>
+
 
                         <a href="/film/{{ $filmOfTheDay->show_id }}" class="btn btn-primary btn-sm">
                             Lihat Detail
