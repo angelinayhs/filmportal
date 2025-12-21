@@ -8,6 +8,7 @@ use App\Http\Controllers\ShowController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\MarketingController;
 use App\Http\Controllers\ExecutiveDashboardController;
+use App\Http\Controllers\ReportController;
 
 // =======================
 // HOME
@@ -39,13 +40,9 @@ Route::post('/executive-login', function (Request $request) {
     return redirect('/')->with('login_error', 'Email atau password executive salah.');
 });
 
-Route::get('/executive', function () {
-    if (session('role') !== 'executive') {
-        return redirect('/')->with('login_error', 'Kamu harus login sebagai Executive dulu.');
-    }
-    return view('executive.dashboard');
-});
-
+// ✅ SATU AJA ROUTE EXECUTIVE (controller)
+Route::get('/executive', [ExecutiveDashboardController::class, 'dashboard'])
+    ->name('executive.dashboard');
 
 // =======================
 // LOGIN MARKETING ✅
