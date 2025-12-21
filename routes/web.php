@@ -40,12 +40,15 @@ Route::post('/executive-login', function (Request $request) {
     return redirect('/')->with('login_error', 'Email atau password executive salah.');
 });
 
-// ✅ SATU AJA ROUTE EXECUTIVE (controller)
-Route::get('/executive', [ExecutiveDashboardController::class, 'dashboard'])
+// ✅ FIX: Ganti 'dashboard' dengan 'index' atau sebaliknya
+Route::get('/executive', [ExecutiveDashboardController::class, 'index'])
     ->name('executive.dashboard');
 
+// Route untuk logout executive (jika ada method khusus)
+Route::post('/executive/logout', [ExecutiveDashboardController::class, 'logout']);
+
 // =======================
-// LOGIN MARKETING ✅
+// LOGIN MARKETING
 // =======================
 Route::post('/marketing-login', function (Request $request) {
     if (
@@ -53,21 +56,15 @@ Route::post('/marketing-login', function (Request $request) {
         $request->password === 'marketing123'
     ) {
         session(['role' => 'marketing']);
-        return redirect('/marketing');
+        return redirect()->route('marketing.dashboard');
     }
 
     return redirect('/')->with('login_error', 'Email atau password marketing salah.');
 });
 
-// ✅ GUARD MARKETING TANPA middleware closure
-Route::get('/marketing', function () {
-    if (session('role') !== 'marketing') {
-        return redirect('/')->with('login_error', 'Kamu harus login sebagai Marketing dulu.');
-    }
-
-    // PANGGIL CONTROLLER DENGAN REQUEST (INI PENTING)
-    return app(MarketingController::class)->index($request);
-});
+// ✅ FIX: Marketing route menggunakan controller langsung
+Route::get('/marketing', [MarketingController::class, 'index'])
+    ->name('marketing.dashboard');
 
 // =======================
 // LOGOUT
@@ -79,5 +76,10 @@ Route::post('/logout', function () {
 
 // Biar kalau user buka /marketing-login lewat browser, ga nge-trigger apa2
 Route::get('/marketing-login', function () {
-    return redirect('/'); // atau return view('marketing_login');
+    return redirect('/');
+});
+
+// Biar kalau user buka /executive-login lewat browser, ga nge-trigger apa2
+Route::get('/executive-login', function () {
+    return redirect('/');
 });
