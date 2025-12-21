@@ -11,32 +11,41 @@ class SearchController extends Controller
     {
         $q = trim($request->get('q', ''));
 
-        // kalau kosong, balikin array kosong aja
         if ($q === '') {
             return response()->json([]);
         }
 
-        // PAKAI STORED PROCEDURE
         $maxResults = 8;
 
-        $rows = DB::select('EXEC dbo.sp_search_suggestions ?, ?', [
-            $q,
-            $maxResults,
-        ]);
+        $rows = DB::select(
+            'EXEC dbo.sp_SmartContextualSearch @keyword = ?, @max_results = ?',
+            [$q, $maxResults]
+        );
 
-        // DB::select ngasih array of stdClass, kita rapihin dulu
         $results = collect($rows)->map(function ($row) {
+            // sp kamu ngembaliin: source_type = 'title' / 'show'
+            // FE kamu ngarep: result_type = 'person' / 'show'
+            $type = $row->source_type ?? 'show';
+
             return [
-                'result_type' => $row->result_type,   // 'show' / 'person'
-                'id'          => $row->id,            // string (bisa 1, 2, nm0178..., dll)
+                // ✅ yang dipakai frontend
+                'result_type' => $type,                 // 'show' atau 'title'
+                'id'          => $row->id,
                 'title'       => $row->title,
-                'description' => $row->description,
                 'genres'      => $row->genres,
-                'popularity'  => $row->popularity,
-                'rating'      => $row->rating,
+
+                // optional tambahan kalau masih dipakai
+                'source_type'     => $type,
+                'description'     => $row->description,
+                'title_type'      => $row->title_type,
+                'start_year'      => $row->start_year,
+                'runtime_minutes' => $row->runtime_minutes,
+                'popularity'      => $row->popularity,
+                'rating'          => $row->rating,
+                'votes'           => $row->votes,
             ];
         });
 
-        return response()->json($results);
+        return response()->json($results->values());
     }
 }

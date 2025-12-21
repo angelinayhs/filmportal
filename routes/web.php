@@ -7,22 +7,22 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ShowController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\MarketingController;
+use App\Http\Controllers\ExecutiveDashboardController;
 
 // =======================
 // HOME
 // =======================
-Route::get('/', [HomeController::class, 'index']);
+Route::get('/', [HomeController::class, 'index'])->name('home');
 
 // =======================
 // DETAIL SHOW
 // =======================
-Route::get('/film/{id}', [ShowController::class, 'detail']);
+Route::get('/film/{id}', [ShowController::class, 'detail'])->name('film.detail');
 
 // =======================
 // SEARCH SUGGESTIONS
 // =======================
 Route::get('/api/search-suggestions', [SearchController::class, 'suggestions']);
-
 
 // =======================
 // LOGIN EXECUTIVE
@@ -33,7 +33,7 @@ Route::post('/executive-login', function (Request $request) {
         $request->password === 'password123'
     ) {
         session(['role' => 'executive']);
-        return redirect('/executive');
+        return redirect()->route('executive.dashboard');
     }
 
     return redirect('/')->with('login_error', 'Email atau password executive salah.');
@@ -43,7 +43,6 @@ Route::get('/executive', function () {
     if (session('role') !== 'executive') {
         return redirect('/')->with('login_error', 'Kamu harus login sebagai Executive dulu.');
     }
-
     return view('executive.dashboard');
 });
 
@@ -63,11 +62,8 @@ Route::post('/marketing-login', function (Request $request) {
     return redirect('/')->with('login_error', 'Email atau password marketing salah.');
 });
 
-
-// =======================
-// MARKETING DASHBOARD
-// =======================
-Route::get('/marketing', function (Request $request) {
+// ✅ GUARD MARKETING TANPA middleware closure
+Route::get('/marketing', function () {
     if (session('role') !== 'marketing') {
         return redirect('/')->with('login_error', 'Kamu harus login sebagai Marketing dulu.');
     }
@@ -75,7 +71,6 @@ Route::get('/marketing', function (Request $request) {
     // PANGGIL CONTROLLER DENGAN REQUEST (INI PENTING)
     return app(MarketingController::class)->index($request);
 });
-
 
 // =======================
 // LOGOUT
