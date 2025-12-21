@@ -11,36 +11,41 @@ class SearchController extends Controller
     {
         $q = trim($request->get('q', ''));
 
-        // Kalau kosong, balikin array kosong
         if ($q === '') {
             return response()->json([]);
         }
 
         $maxResults = 8;
 
-        // PAKAI STORED PROCEDURE BARU
         $rows = DB::select(
             'EXEC dbo.sp_SmartContextualSearch @keyword = ?, @max_results = ?',
             [$q, $maxResults]
         );
 
-        // Rapihin response JSON
         $results = collect($rows)->map(function ($row) {
+            // sp kamu ngembaliin: source_type = 'title' / 'show'
+            // FE kamu ngarep: result_type = 'person' / 'show'
+            $type = $row->source_type ?? 'show';
+
             return [
-                'source_type'      => $row->source_type,   // title / show
-                'id'               => $row->id,
-                'title'            => $row->title,
-                'description'      => $row->description,
-                'title_type'       => $row->title_type,
-                'start_year'       => $row->start_year,
-                'runtime_minutes'  => $row->runtime_minutes,
-                'genres'           => $row->genres,
-                'popularity'       => $row->popularity,
-                'rating'           => $row->rating,
-                'votes'            => $row->votes,
+                // ✅ yang dipakai frontend
+                'result_type' => $type,                 // 'show' atau 'title'
+                'id'          => $row->id,
+                'title'       => $row->title,
+                'genres'      => $row->genres,
+
+                // optional tambahan kalau masih dipakai
+                'source_type'     => $type,
+                'description'     => $row->description,
+                'title_type'      => $row->title_type,
+                'start_year'      => $row->start_year,
+                'runtime_minutes' => $row->runtime_minutes,
+                'popularity'      => $row->popularity,
+                'rating'          => $row->rating,
+                'votes'           => $row->votes,
             ];
         });
 
-        return response()->json($results);
+        return response()->json($results->values());
     }
 }
