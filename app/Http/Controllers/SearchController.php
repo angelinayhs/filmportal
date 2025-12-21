@@ -11,29 +11,33 @@ class SearchController extends Controller
     {
         $q = trim($request->get('q', ''));
 
-        // kalau kosong, balikin array kosong aja
+        // Kalau kosong, balikin array kosong
         if ($q === '') {
             return response()->json([]);
         }
 
-        // PAKAI STORED PROCEDURE
         $maxResults = 8;
 
-        $rows = DB::select('EXEC dbo.sp_search_suggestions ?, ?', [
-            $q,
-            $maxResults,
-        ]);
+        // PAKAI STORED PROCEDURE BARU
+        $rows = DB::select(
+            'EXEC dbo.sp_SmartContextualSearch @keyword = ?, @max_results = ?',
+            [$q, $maxResults]
+        );
 
-        // DB::select ngasih array of stdClass, kita rapihin dulu
+        // Rapihin response JSON
         $results = collect($rows)->map(function ($row) {
             return [
-                'result_type' => $row->result_type,   // 'show' / 'person'
-                'id'          => $row->id,            // string (bisa 1, 2, nm0178..., dll)
-                'title'       => $row->title,
-                'description' => $row->description,
-                'genres'      => $row->genres,
-                'popularity'  => $row->popularity,
-                'rating'      => $row->rating,
+                'source_type'      => $row->source_type,   // title / show
+                'id'               => $row->id,
+                'title'            => $row->title,
+                'description'      => $row->description,
+                'title_type'       => $row->title_type,
+                'start_year'       => $row->start_year,
+                'runtime_minutes'  => $row->runtime_minutes,
+                'genres'           => $row->genres,
+                'popularity'       => $row->popularity,
+                'rating'           => $row->rating,
+                'votes'            => $row->votes,
             ];
         });
 
