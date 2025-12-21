@@ -7,6 +7,7 @@ use App\Http\Controllers\ShowController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\MarketingController;
 use App\Http\Controllers\ExecutiveDashboardController;
+use App\Http\Controllers\ReportController;
 
 // =======================
 // HOME
@@ -39,7 +40,7 @@ Route::post('/executive-login', function (Request $request) {
 });
 
 // ✅ SATU AJA ROUTE EXECUTIVE (controller)
-Route::get('/executive', [ExecutiveDashboardController::class, 'dashboard'])
+Route::get('/executive', [ExecutiveDashboardController::class, 'index'])
     ->name('executive.dashboard');
 
 // =======================
