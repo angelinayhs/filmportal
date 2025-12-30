@@ -422,7 +422,7 @@
                         <small class="text-muted d-block mb-3">
                             @if($filmOfTheDay->original_release_date)
                                 Rilis asli:
-                                {{ \Carbon\Carbon::parse($filmOfTheDay->original_release_date)->format('Y-m-d') }}
+                                {{ \Carbon\Carbon::createFromFormat('M j Y h:i:s:A', $filmOfTheDay->original_release_date)->format('Y-m-d') }}
                                 @if(!is_null($filmOfTheDay->years_ago))
                                     ({{ $filmOfTheDay->years_ago }} tahun lalu)
                                 @endif

@@ -2,141 +2,30 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Session;
-use Illuminate\Support\Collection;
 
 class ExecutiveDashboardController extends Controller
 {
-    public function index(Request $request)
+    public function index()
     {
-        // ===== GUARD =====
-        if (Session::get('role') !== 'executive') {
-            return redirect('/')->with('login_error', 'Akses ditolak. Hanya untuk Executive.');
-        }
+        $films = DB::select("
+            SELECT TOP 50
+                show_id,
+                name AS title,
+                vote_average AS rating,
+                CASE
+                    WHEN number_of_seasons IS NULL THEN 'movie'
+                    ELSE 'tv'
+                END AS type
+            FROM vw_show_details WITH (NOLOCK)
+            WHERE vote_average IS NOT NULL
+            ORDER BY vote_average DESC
+        ");
 
-        // ===== VALIDASI INPUT =====
-        $validated = $request->validate([
-            'q' => 'nullable|string|max:100',
-            'lifecycle' => 'nullable|string|in:all,upcoming,released,archived',
-            'studio_filter' => 'nullable|string|max:100',
-            'global_search' => 'nullable|string|max:100',
-            'language_filter' => 'nullable|string|max:50',
-            'time_period' => 'nullable|string|in:monthly,quarterly,yearly',
-            'content_type_lang' => 'nullable|string|in:all,movie,tv',
-        ]);
+        // convert array -> collection (biar avg(), count() bisa)
+        $films = collect($films);
 
-        // ===== PARAMS =====
-        $q = trim($validated['q'] ?? '');
-        $lifecycleFilter = $validated['lifecycle'] ?? 'all';
-        $studioFilter = $validated['studio_filter'] ?? '';
-        $globalSearch = trim($validated['global_search'] ?? '');
-        $languageFilter = $validated['language_filter'] ?? 'all';
-        $timePeriod = $validated['time_period'] ?? 'monthly';
-        $contentTypeLang = $validated['content_type_lang'] ?? 'all';
-
-        // ===== BASE QUERY =====
-        $baseQuery = DB::table('vw_studio_content_management');
-
-        if ($q !== '') {
-            $searchTerm = "%{$q}%";
-            $baseQuery->where(function ($w) use ($searchTerm) {
-                $w->where('name', 'like', $searchTerm)
-                    ->orWhere('original_name', 'like', $searchTerm)
-                    ->orWhere('genres', 'like', $searchTerm)
-                    ->orWhere('production_companies', 'like', $searchTerm);
-            });
-        }
-
-        if ($lifecycleFilter !== 'all') {
-            $baseQuery->where('lifecycle_status', ucfirst($lifecycleFilter));
-        }
-
-        // ===== TABLE CONTENTS =====
-        $contents = (clone $baseQuery)
-            ->select([
-                'show_id',
-                'name',
-                'original_name',
-                'popularity',
-                'vote_average',
-                'vote_count',
-                'show_type',
-                'status',
-                'genres',
-                'production_companies',
-                'first_air_date',
-                'last_air_date',
-                'lifecycle_status'
-            ])
-            ->orderByDesc('popularity')
-            ->orderByDesc('vote_average')
-            ->paginate(10)
-            ->withQueryString();
-
-        // ===== STATS =====
-        $stats = (clone $baseQuery)
-            ->selectRaw("
-                COUNT(*) as total,
-                SUM(CASE WHEN lifecycle_status = 'Upcoming' THEN 1 ELSE 0 END) as upcoming,
-                SUM(CASE WHEN lifecycle_status = 'Released' THEN 1 ELSE 0 END) as released,
-                SUM(CASE WHEN lifecycle_status = 'Archived' THEN 1 ELSE 0 END) as archived
-            ")
-            ->first();
-
-        // ===== LIFECYCLE TRACKER =====
-        $lifecycle = $this->getLifecycleTracker($q, $lifecycleFilter);
-
-        // ===== CROSS STUDIO =====
-        $crossStudio = $this->getCrossStudioAnalytics($studioFilter);
-
-        // ===== TOP PERFORMER DASHBOARD =====
-        $topPerformers = $this->getTopPerformers();
-
-        // ===== GLOBAL TREND MONITORING =====
-        $globalTrends = $this->getGlobalTrends($globalSearch);
-        $trendLines = $this->getTrendLines();
-        $topGrowthContent = $this->getTopGrowthContent();
-
-        // ===== MULTI-LANGUAGE ANALYTICS =====
-        $subtitleDistribution = $this->getSubtitleDistribution($languageFilter, $contentTypeLang);
-        $subtitleGrowthData = $this->getSubtitleGrowthData($timePeriod, $languageFilter);
-        $languageDetails = $this->getLanguageDetails($languageFilter);
-        $languageStats = $this->getLanguageStats();
-
-        // ===== STUDIO LIST =====
-        $studioList = DB::table('vw_cross_studio_analytics')
-            ->select('studio_name')
-            ->orderBy('studio_name')
-            ->pluck('studio_name');
-
-        return view('executive.dashboard', [
-            'contents' => $contents,
-            'stats' => $stats,
-            'q' => $q,
-            'lifecycle' => $lifecycle,
-            'crossStudio' => $crossStudio,
-            'studioList' => $studioList,
-            'topPerformers' => $topPerformers,
-            'globalTrends' => $globalTrends,
-            'trendLines' => $trendLines,
-            'topGrowthContent' => $topGrowthContent,
-            
-            // Data untuk Multi-Language Analytics
-            'subtitleDistribution' => $subtitleDistribution,
-            'subtitleGrowthData' => $subtitleGrowthData,
-            'languageDetails' => $languageDetails,
-            'languageStats' => $languageStats,
-            
-            // Filter parameters
-            'lifecycleFilter' => $lifecycleFilter,
-            'studioFilter' => $studioFilter,
-            'globalSearch' => $globalSearch,
-            'languageFilter' => $languageFilter,
-            'timePeriod' => $timePeriod,
-            'contentTypeLang' => $contentTypeLang,
-        ]);
+        return view('executive.dashboard', compact('films'));
     }
 
     /**

@@ -34,18 +34,24 @@ Route::post('/executive-login', function (Request $request) {
         $request->password === 'password123'
     ) {
         session(['role' => 'executive']);
-        return redirect()->route('executive.dashboard');
+        return redirect('/executive');
     }
 
     return redirect('/')->with('login_error', 'Email atau password executive salah.');
 });
 
-// ✅ FIX: Ganti 'dashboard' dengan 'index' atau sebaliknya
-Route::get('/executive', [ExecutiveDashboardController::class, 'index'])
-    ->name('executive.dashboard');
+Route::get('/executive', function () {
+
+    if (session('role') !== 'executive') {
+        return redirect('/')->with('login_error', 'Kamu harus login sebagai Executive dulu.');
+    }
+
+    return app(\App\Http\Controllers\ExecutiveDashboardController::class)->index();
+});
 
 // Route untuk logout executive (jika ada method khusus)
 Route::post('/executive/logout', [ExecutiveDashboardController::class, 'logout']);
+
 
 // =======================
 // LOGIN MARKETING
@@ -62,9 +68,18 @@ Route::post('/marketing-login', function (Request $request) {
     return redirect('/')->with('login_error', 'Email atau password marketing salah.');
 });
 
-// ✅ FIX: Marketing route menggunakan controller langsung
-Route::get('/marketing', [MarketingController::class, 'index'])
-    ->name('marketing.dashboard');
+// =======================
+// DASHBOARD MARKETING ✅ FIXED
+// =======================
+Route::get('/marketing', function (Request $request) {
+
+    if (session('role') !== 'marketing') {
+        return redirect('/')->with('login_error', 'Kamu harus login sebagai Marketing dulu.');
+    }
+
+    // SEKARANG $request SUDAH VALID
+    return app(MarketingController::class)->index($request);
+});
 
 // =======================
 // LOGOUT
@@ -74,12 +89,45 @@ Route::post('/logout', function () {
     return redirect('/');
 });
 
-// Biar kalau user buka /marketing-login lewat browser, ga nge-trigger apa2
+// =======================
+// PREVENT GET /marketing-login
+// =======================
 Route::get('/marketing-login', function () {
     return redirect('/');
+});
+
+
+// =======================
+// Executive Dashboard - Protected
+// =======================
+Route::middleware(['web', 'role:executive'])->group(function () {
+    // MAIN DASHBOARD
+    Route::get('/executive/dashboard', [ExecutiveDashboardController::class, 'index'])
+        ->name('executive.dashboard');
+    
+    // CONTENT CRUD OPERATIONS
+    Route::post('/executive/content', [ExecutiveDashboardController::class, 'create'])
+        ->name('executive.content.create');
+    
+    Route::put('/executive/content/{identifier}', [ExecutiveDashboardController::class, 'update'])
+        ->name('executive.content.update');
+    
+    Route::delete('/executive/content/{identifier}', [ExecutiveDashboardController::class, 'delete'])
+        ->name('executive.content.delete');
+    
+    Route::get('/executive/content/{identifier}', [ExecutiveDashboardController::class, 'show'])
+        ->name('executive.content.show');
+    
+    Route::post('/executive/logout', function (Request $request) {
+        $request->session()->forget('role');
+        return redirect('/')->with('success', 'Logout berhasil.');
+    })->name('executive.logout');
 });
 
 // Biar kalau user buka /executive-login lewat browser, ga nge-trigger apa2
 Route::get('/executive-login', function () {
     return redirect('/');
 });
+
+
+
